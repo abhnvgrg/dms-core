@@ -1,0 +1,44 @@
+# Project-specific
+docs/
+
+
+# Backend (Python/FastAPI)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+
+backend/storage/evidence.db
+backend/storage/files/*
+!backend/storage/files/.gitkeep
+backend/storage/keys/
+
+# Frontend (Node/Next.js)
+node_modules/
+.next/
+out/
+build/
+dist/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
