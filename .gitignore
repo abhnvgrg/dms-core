@@ -18,6 +18,8 @@ backend/storage/evidence.db
 backend/storage/files/*
 !backend/storage/files/.gitkeep
 backend/storage/keys/
+backend/.env
+backend/.venv/
 
 # Frontend (Node/Next.js)
 node_modules/
@@ -42,3 +44,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+#Infrastructure
+infrastructure/.env

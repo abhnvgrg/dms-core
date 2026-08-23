@@ -8,3 +8,11 @@ pillow
 cryptography
 spacy
 bcrypt==4.0.1
+sqlalchemy[asyncio]
+asyncpg
+alembic
+celery[redis]
+redis
+minio
+pydantic-settings
+email-validator
