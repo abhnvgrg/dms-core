@@ -51,6 +51,8 @@ class AuditAction(str, enum.Enum):
     ASSET_REGISTERED = "asset_registered"
     ASSET_TRANSFERRED = "asset_transferred"
     INTEGRITY_VERIFIED = "integrity_verified"
+    case_created = "case_created"
+    case_assigned = "case_assigned"
 
 def enum_values(enum_class):
     return [member.value for member in enum_class]
