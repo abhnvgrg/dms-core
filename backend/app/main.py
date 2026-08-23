@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.cases import router as cases_router
 from app.core.config import get_settings
 from app.database import engine
 
@@ -36,7 +37,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/api/v1")
-
+app.include_router(cases_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health() -> dict[str, str]:
