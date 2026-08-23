@@ -16,3 +16,4 @@ redis
 minio
 pydantic-settings
 email-validator
+pgvector
