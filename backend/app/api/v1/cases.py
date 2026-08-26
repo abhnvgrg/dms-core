@@ -49,7 +49,7 @@ async def create_case(
 
     await append_entry(
         session,
-        action=AuditAction.case_created,
+        action=AuditAction.CASE_CREATED,
         actor_id=current_user.id,
         payload={"case_id": str(case.id), "fir_number": case.fir_number},
     )
@@ -139,7 +139,7 @@ async def assign_to_case(
 
     await append_entry(
         session,
-        action=AuditAction.case_assigned,
+        action=AuditAction.CASE_ASSIGNED,
         actor_id=current_user.id,
         payload={"case_id": str(case.id), "assigned_user_id": str(payload.user_id)},
     )

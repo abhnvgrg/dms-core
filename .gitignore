@@ -20,6 +20,9 @@ backend/storage/files/*
 backend/storage/keys/
 backend/.env
 backend/.venv/
+backend/celerybeat-schedule*
+backend/uvicorn.log
+backend/test_ocr.png
 
 # Frontend (Node/Next.js)
 node_modules/
@@ -47,3 +50,5 @@ Thumbs.db
 
 #Infrastructure
 infrastructure/.env
+# Frontend build artifacts
+frontend/tsconfig.tsbuildinfo

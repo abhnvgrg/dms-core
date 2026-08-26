@@ -3,9 +3,9 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, engine
 from app.models.entities import AuditAction, Document
-from app.services import storage
+from app.services import encryption, storage
 from app.services.ai_pipeline import extract_text, redact_pii, generate_embedding
 from app.services.audit import append_entry
 from app.tasks.celery_app import celery_app
@@ -20,15 +20,16 @@ async def _process_document_async(document_id: str) -> None:
             return
 
         try:
-            file_bytes = storage.download_file(document.object_key)
+            encrypted_bytes = storage.download_file(document.object_key)
+            file_bytes = await encryption.decrypt_bytes(session, encrypted_bytes)
             ocr_status, extracted_text = extract_text(file_bytes, document.content_type)
 
             if ocr_status == "ok" and extracted_text:
                 redacted = redact_pii(extracted_text)
                 embedding = generate_embedding(redacted)
 
-                document.extracted_text_encrypted = extracted_text
-                document.redacted_text = redacted
+                document.extracted_text_encrypted = await encryption.encrypt_text(session, extracted_text)
+                document.redacted_text = await encryption.encrypt_text(session, redacted)
                 document.embedding = embedding
                 document.processing_status = "ready"
             else:
@@ -37,7 +38,7 @@ async def _process_document_async(document_id: str) -> None:
 
             await append_entry(
                 session,
-                action=AuditAction.document_processed,
+                action=AuditAction.DOCUMENT_PROCESSED,
                 actor_id=document.uploaded_by_id,
                 payload={"document_id": str(document.id), "ocr_status": ocr_status},
             )
@@ -48,7 +49,7 @@ async def _process_document_async(document_id: str) -> None:
 
             await append_entry(
                 session,
-                action=AuditAction.document_processing_failed,
+                action=AuditAction.DOCUMENT_PROCESSING_FAILED,
                 actor_id=document.uploaded_by_id,
                 payload={"document_id": str(document.id), "error": str(error)},
             )
@@ -58,4 +59,7 @@ async def _process_document_async(document_id: str) -> None:
 
 @celery_app.task(name="process_document")
 def process_document(document_id: str) -> None:
-    asyncio.run(_process_document_async(document_id))
+    try:
+        asyncio.run(_process_document_async(document_id))
+    finally:
+        asyncio.run(engine.dispose())

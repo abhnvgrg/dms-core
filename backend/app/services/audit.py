@@ -1,10 +1,28 @@
 import json
 import hashlib
+import logging
 from datetime import datetime, timezone
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.models.entities import AuditLedger, AuditAction
+
+logger = logging.getLogger(__name__)
+
+
+@event.listens_for(Session, "after_commit")
+def _enqueue_pending_anchors(session: Session) -> None:
+    pending = session.info.pop("pending_anchor_ids", None)
+    if not pending:
+        return
+    try:
+        from app.tasks.blockchain_anchor import anchor_ledger_entry
+
+        for entry_id in pending:
+            anchor_ledger_entry.delay(entry_id)
+    except Exception:
+        logger.exception("Failed to enqueue blockchain anchoring for ledger entries %s", pending)
 
 
 def _canonical_json(data: dict) -> str:
@@ -39,16 +57,24 @@ async def append_entry(
         (previous_hash + canonical).encode()
     ).hexdigest()
 
-    # Determine what entity this audit event belongs to
-    if "case_id" in payload:
-        entity_type = "case"
-        entity_id = payload["case_id"]
-    elif "document_id" in payload:
+    if "document_id" in payload:
         entity_type = "document"
         entity_id = payload["document_id"]
+    elif "case_id" in payload:
+        entity_type = "case"
+        entity_id = payload["case_id"]
     elif "asset_id" in payload:
         entity_type = "physical_asset"
         entity_id = payload["asset_id"]
+    elif "retention_policy_id" in payload:
+        entity_type = "retention_policy"
+        entity_id = payload["retention_policy_id"]
+    elif "user_id" in payload:
+        entity_type = "user"
+        entity_id = payload["user_id"]
+    elif "encryption_key_id" in payload:
+        entity_type = "encryption_key"
+        entity_id = payload["encryption_key_id"]
     else:
         raise ValueError("Audit payload must contain an entity ID")
 
@@ -64,6 +90,8 @@ async def append_entry(
 
     session.add(entry)
     await session.flush()
+
+    session.sync_session.info.setdefault("pending_anchor_ids", []).append(entry.id)
 
     return entry
 
