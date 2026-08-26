@@ -21,7 +21,15 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
 
-from app.models.entities import Base, Role, User  # noqa: E402
+from app.models.entities import (  # noqa: E402
+    Base,
+    Case,
+    CaseAssignment,
+    Document,
+    DocumentClassification,
+    Role,
+    User,
+)
 
 
 def _maintenance_url(url: str) -> tuple[str, str]:
@@ -157,3 +165,76 @@ async def admin(session) -> User:
     session.add(user)
     await session.flush()
     return user
+
+
+@pytest_asyncio.fixture
+async def court_official(session) -> User:
+    user = User(
+        id=uuid.uuid4(),
+        badge_number=f"COURT-{uuid.uuid4().hex[:8]}",
+        full_name="Test Court Official",
+        role=Role.COURT_OFFICIAL,
+        password_hash="not-used-in-these-tests",
+    )
+    session.add(user)
+    await session.flush()
+    return user
+
+
+@pytest_asyncio.fixture
+async def other_officer(session) -> User:
+    user = User(
+        id=uuid.uuid4(),
+        badge_number=f"OTHER-{uuid.uuid4().hex[:8]}",
+        full_name="Unassigned Officer",
+        role=Role.INVESTIGATING_OFFICER,
+        password_hash="not-used-in-these-tests",
+    )
+    session.add(user)
+    await session.flush()
+    return user
+
+
+@pytest_asyncio.fixture
+def make_case(session):
+    async def build(owner: User, *assignees: User) -> Case:
+        case = Case(
+            id=uuid.uuid4(),
+            fir_number=f"FIR-{uuid.uuid4().hex[:10]}",
+            title="Test Case",
+            status="open",
+            created_by_id=owner.id,
+        )
+        session.add(case)
+        await session.flush()
+
+        for user in (owner, *assignees):
+            session.add(CaseAssignment(case_id=case.id, user_id=user.id))
+        await session.flush()
+        return case
+
+    return build
+
+
+@pytest_asyncio.fixture
+def make_document(session):
+    async def build(
+        case: Case,
+        uploader: User,
+        classification: DocumentClassification = DocumentClassification.CASE_RESTRICTED,
+    ) -> Document:
+        document = Document(
+            id=uuid.uuid4(),
+            case_id=case.id,
+            uploaded_by_id=uploader.id,
+            original_filename="evidence.pdf",
+            content_type="application/pdf",
+            object_key=f"evidence/{uuid.uuid4().hex}.pdf",
+            sha256_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+            classification=classification,
+        )
+        session.add(document)
+        await session.flush()
+        return document
+
+    return build
