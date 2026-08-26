@@ -100,6 +100,23 @@ def offline_object_storage(monkeypatch):
     monkeypatch.setattr(storage, "put_checkpoint", unavailable)
 
 
+@pytest.fixture(autouse=True)
+def in_memory_mfa_replay_cache(monkeypatch):
+    from app.services import mfa
+
+    used: set[tuple[str, str]] = set()
+
+    async def is_code_used(user_id, code: str) -> bool:
+        return (str(user_id), code) in used
+
+    async def mark_code_used(user_id, code: str) -> None:
+        used.add((str(user_id), code))
+
+    monkeypatch.setattr(mfa, "is_code_used", is_code_used)
+    monkeypatch.setattr(mfa, "mark_code_used", mark_code_used)
+    return used
+
+
 @pytest.fixture
 def working_object_storage(monkeypatch):
     written: dict[int, bytes] = {}
