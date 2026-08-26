@@ -1,5 +1,6 @@
 # Project-specific
 docs/
+!docs/audit-integrity.md,
 
 
 # Backend (Python/FastAPI)
