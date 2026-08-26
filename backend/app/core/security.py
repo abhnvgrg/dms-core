@@ -1,13 +1,14 @@
-from datetime import datetime, timedelta, timezone
-
-from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from app.core.config import get_settings
-
+# Argon2id is the target scheme; bcrypt stays listed so hashes created before
+# the switch still verify and get upgraded on the owner's next login.
 password_context = CryptContext(
-    schemes=["bcrypt"],
+    schemes=["argon2", "bcrypt"],
     deprecated="auto",
+    argon2__type="ID",
+    argon2__memory_cost=65536,
+    argon2__time_cost=3,
+    argon2__parallelism=4,
 )
 
 
@@ -19,39 +20,5 @@ def verify_password(password: str, password_hash: str) -> bool:
     return password_context.verify(password, password_hash)
 
 
-def create_access_token(
-    *,
-    subject: str,
-    role: str,
-    badge_number: str,
-) -> str:
-    settings = get_settings()
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.jwt_access_token_minutes
-    )
-
-    payload = {
-        "sub": subject,
-        "role": role,
-        "badge_number": badge_number,
-        "exp": expires_at,
-    }
-
-    return jwt.encode(
-        payload,
-        settings.jwt_secret,
-        algorithm=settings.jwt_algorithm,
-    )
-
-
-def decode_access_token(token: str) -> dict | None:
-    settings = get_settings()
-
-    try:
-        return jwt.decode(
-            token,
-            settings.jwt_secret,
-            algorithms=[settings.jwt_algorithm],
-        )
-    except JWTError:
-        return None
+def needs_rehash(password_hash: str) -> bool:
+    return password_context.needs_update(password_hash)

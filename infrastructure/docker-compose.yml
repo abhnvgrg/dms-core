@@ -31,6 +31,45 @@ services:
       timeout: 5s
       retries: 20
 
+  celery-worker:
+    build: ../backend
+    command: celery -A app.tasks.celery_app worker --loglevel=info --pool=solo
+    env_file: ../backend/.env
+    depends_on:
+      - postgres
+      - redis
+      - minio
+      - ganache
+
+  celery-beat:
+    build: ../backend
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    env_file: ../backend/.env
+    depends_on:
+      - postgres
+      - redis
+
+  ganache:
+    image: trufflesuite/ganache:latest
+    command: --wallet.deterministic --chain.chainId 1337
+    ports:
+      - "8545:8545"
+    volumes:
+      - ganache_data:/data
+
+  clamav:
+    image: clamav/clamav:stable
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+
   minio:
     image: minio/minio:latest
     environment:
@@ -47,3 +86,5 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  ganache_data:
+  clamav_data:

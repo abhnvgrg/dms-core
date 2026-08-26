@@ -1,7 +1,9 @@
 fastapi
 uvicorn[standard]
-python-jose[cryptography]
-passlib[bcrypt]
+passlib[bcrypt,argon2]
+argon2-cffi
+pyotp
+clamd
 python-multipart
 pytesseract
 pillow
@@ -15,5 +17,6 @@ celery[redis]
 redis
 minio
 pydantic-settings
-email-validator
 pgvector
+web3
+py-solc-x

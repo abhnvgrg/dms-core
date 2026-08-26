@@ -1,50 +1,71 @@
-from uuid import UUID
-
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import decode_access_token
 from app.database import get_db
-from app.models.entities import Role, User
+from app.models.entities import Role, Session, User
+from app.services import mfa, sessions
+from app.services.encryption import decrypt_text
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
-async def get_current_user(
+async def get_session_record(
     token: str = Depends(oauth2_scheme),
     session: AsyncSession = Depends(get_db),
-) -> User:
-    payload = decode_access_token(token)
-    subject = payload.get("sub") if payload else None
+) -> Session:
+    record = await sessions.get_live_session(session, token)
 
-    if subject is None:
+    if record is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+            detail="Invalid or expired session",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    try:
-        user_id = UUID(subject)
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token subject",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from error
+    return record
 
-    user = await session.scalar(select(User).where(User.id == user_id))
+
+async def get_current_user(
+    record: Session = Depends(get_session_record),
+    session: AsyncSession = Depends(get_db),
+) -> User:
+    user = await session.get(User, record.user_id)
 
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User is inactive or no longer exists",
+            detail="Invalid or expired session",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # A session issued to a privileged user who has not yet enrolled MFA can do
+    # exactly one thing: enrol. Everything else is closed until they do.
+    if record.mfa_pending:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="MFA enrollment is required before this account can be used",
+        )
+
+    return user
+
+
+async def get_enrolling_user(
+    record: Session = Depends(get_session_record),
+    session: AsyncSession = Depends(get_db),
+) -> User:
+    """Like get_current_user, but usable from an enrollment-only session."""
+    user = await session.get(User, record.user_id)
+
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     return user
+
 
 def require_roles(*allowed_roles: Role):
     async def role_guard(
@@ -59,3 +80,42 @@ def require_roles(*allowed_roles: Role):
         return current_user
 
     return role_guard
+
+
+async def require_fresh_mfa(
+    x_mfa_code: str | None = Header(None),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> User:
+    """Step-up: a valid session is not enough for actions with legal consequences.
+
+    Fails closed. A user who has never enrolled cannot perform these actions at
+    all -- being un-enrolled is not a way to skip the check.
+    """
+    if not current_user.mfa_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "This action requires multi-factor authentication. "
+                "Enrol at /api/v1/auth/mfa/enroll first."
+            ),
+        )
+
+    if not x_mfa_code:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This action requires a fresh MFA code (X-MFA-Code header)",
+        )
+
+    secret = await decrypt_text(session, current_user.totp_secret_encrypted)
+    if not secret or not mfa.verify_code(secret, x_mfa_code):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA code")
+
+    if await mfa.is_code_used(current_user.id, x_mfa_code):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This MFA code has already been used; wait for the next one",
+        )
+    await mfa.mark_code_used(current_user.id, x_mfa_code)
+
+    return current_user

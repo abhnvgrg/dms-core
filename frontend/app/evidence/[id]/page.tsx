@@ -1,203 +1,476 @@
 "use client";
 
-import { useEffect, useState, use as usePromise } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState, use as usePromise } from "react";
 import AppShell from "@/components/AppShell";
+import {
+  Alert,
+  Badge,
+  CLASSIFICATION_LABELS,
+  Card,
+  Cell,
+  Field,
+  Mono,
+  PageHeading,
+  Table,
+  classificationKind,
+} from "@/components/ui";
 import { useAuth } from "@/lib/auth-context";
-import { fetchEvidenceDetail, verifyEvidence, EvidenceDetail, VerifyResponse } from "@/lib/api";
+import {
+  AccessGrant,
+  AuditEntry,
+  EvidenceDetail,
+  VerifyResponse,
+  createAccessGrant,
+  downloadEvidence,
+  fetchAccessGrants,
+  fetchEntityAudit,
+  fetchEvidenceDetail,
+  reclassifyDocument,
+  revokeAccessGrant,
+  verifyEvidence,
+} from "@/lib/api";
+
+const CLASSIFICATIONS = ["public_redacted", "case_restricted", "court_elevated", "admin_only"];
 
 export default function EvidenceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = usePromise(params);
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
+  const { user } = useAuth();
+
   const [record, setRecord] = useState<EvidenceDetail | null>(null);
+  const [grants, setGrants] = useState<AccessGrant[]>([]);
+  const [trail, setTrail] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [verifying, setVerifying] = useState(false);
+  const [notice, setNotice] = useState("");
   const [verifyResult, setVerifyResult] = useState<VerifyResponse | null>(null);
+  const [busy, setBusy] = useState("");
 
-  useEffect(() => {
-    if (!authLoading && !user) router.push("/login");
-  }, [authLoading, user, router]);
+  const [grantBadge, setGrantBadge] = useState("");
+  const [grantReason, setGrantReason] = useState("");
+  const [grantHours, setGrantHours] = useState(24);
+  const [grantMfa, setGrantMfa] = useState("");
+
+  const [newClassification, setNewClassification] = useState("");
+  const [classifyMfa, setClassifyMfa] = useState("");
+
+  const canManage = user?.role === "investigating_officer" || user?.role === "admin";
+
+  const load = useCallback(async () => {
+    try {
+      const detail = await fetchEvidenceDetail(id);
+      setRecord(detail);
+      setNewClassification(detail.classification);
+
+      const [trailData, grantData] = await Promise.all([
+        fetchEntityAudit("document", id).catch(() => [] as AuditEntry[]),
+        canManage ? fetchAccessGrants(id).catch(() => [] as AccessGrant[]) : Promise.resolve([]),
+      ]);
+      setTrail(trailData);
+      setGrants(grantData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load the record");
+    } finally {
+      setLoading(false);
+    }
+  }, [id, canManage]);
 
   useEffect(() => {
     if (!user) return;
-    fetchEvidenceDetail(Number(id))
-      .then(setRecord)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [user, id]);
+    let cancelled = false;
 
-  async function handleVerify() {
-    setVerifying(true);
-    setVerifyResult(null);
+    void (async () => {
+      try {
+        const detail = await fetchEvidenceDetail(id);
+        if (cancelled) return;
+        setRecord(detail);
+        setNewClassification(detail.classification);
+
+        const [trailData, grantData] = await Promise.all([
+          fetchEntityAudit("document", id).catch(() => [] as AuditEntry[]),
+          canManage ? fetchAccessGrants(id).catch(() => [] as AccessGrant[]) : Promise.resolve([]),
+        ]);
+        if (cancelled) return;
+        setTrail(trailData);
+        setGrants(grantData);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load the record");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, id, canManage]);
+
+  async function runVerify() {
+    setBusy("verify");
+    setError("");
     try {
-      const res = await verifyEvidence(Number(id));
-      setVerifyResult(res);
+      setVerifyResult(await verifyEvidence(id));
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed");
     } finally {
-      setVerifying(false);
+      setBusy("");
     }
   }
 
-  if (authLoading || !user) return null;
+  async function runDownload() {
+    if (!record) return;
+    setBusy("download");
+    setError("");
+    try {
+      await downloadEvidence(id, record.filename);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download failed");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function submitGrant() {
+    setBusy("grant");
+    setError("");
+    setNotice("");
+    try {
+      await createAccessGrant(
+        id,
+        { grantee_badge_number: grantBadge, reason: grantReason, duration_hours: grantHours },
+        grantMfa,
+      );
+      setGrantBadge("");
+      setGrantReason("");
+      setGrantMfa("");
+      setNotice("Access granted. It expires on its own and the grant itself is in the ledger.");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create the grant");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function revoke(grantId: string) {
+    const code = window.prompt("Authenticator code (revoking access is an MFA-protected action)");
+    if (!code) return;
+    setBusy("revoke");
+    setError("");
+    try {
+      await revokeAccessGrant(id, grantId, code);
+      setNotice("Grant revoked.");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not revoke the grant");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function submitReclassify() {
+    setBusy("classify");
+    setError("");
+    setNotice("");
+    try {
+      await reclassifyDocument(id, newClassification, classifyMfa);
+      setClassifyMfa("");
+      setNotice("Classification changed and recorded.");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not change classification");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  if (!user) return null;
+  if (loading) {
+    return (
+      <AppShell>
+        <p style={{ fontSize: 18 }}>Loading record…</p>
+      </AppShell>
+    );
+  }
+  if (!record) {
+    return (
+      <AppShell>
+        <Alert kind="error">{error || "Record not found"}</Alert>
+      </AppShell>
+    );
+  }
+
+  const integrityKind =
+    verifyResult?.integrity === "VERIFIED"
+      ? "success"
+      : verifyResult?.integrity === "PENDING_REVIEW"
+        ? "warning"
+        : "error";
 
   return (
     <AppShell>
-      <button
-        onClick={() => router.push("/dashboard")}
-        className="btn-secondary"
-        style={{ marginBottom: 24, minHeight: 40, padding: "0 20px", fontSize: 16 }}
-      >
-        ← Back to Dashboard
-      </button>
+      <PageHeading title={record.filename} subtitle={`Case ${record.case_id}`} />
 
-      {loading && <p style={{ fontSize: 18 }}>Loading record...</p>}
-      {error && (
-        <div
-          style={{
-            background: "var(--color-error-container)",
-            color: "var(--color-on-error-container)",
-            padding: 16,
-            fontWeight: 600,
-            border: "2px solid var(--color-error)",
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {error && <Alert kind="error">{error}</Alert>}
+      {notice && <Alert kind="success">{notice}</Alert>}
 
-      {record && (
-        <>
-          <h1 style={{ fontSize: 40, fontWeight: 700, marginBottom: 8 }}>
-            Evidence Record #{record.id}
-          </h1>
-          <p style={{ fontSize: 18, color: "var(--color-on-surface-variant)", marginBottom: 32 }}>
-            Case {record.case_id} · Uploaded by {record.uploaded_by}
-          </p>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 24 }}>
-            <div className="card">
-              <div className="card-header">
-                <span style={{ fontSize: 28, fontWeight: 700 }}>Record Details</span>
-              </div>
-              <div style={{ padding: 24 }}>
-                <Row label="Filename" value={record.filename} />
-                <Row label="Case ID" value={record.case_id} />
-                <Row label="Uploaded By" value={record.uploaded_by} />
-                <Row label="Uploaded At" value={new Date(record.uploaded_at).toLocaleString()} />
-                <Row label="OCR Status" value={record.ocr_status} />
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="card-header">
-                <span style={{ fontSize: 28, fontWeight: 700 }}>Cryptographic Record</span>
-              </div>
-              <div style={{ padding: 24 }}>
-                <Row label="SHA-256 Hash (at upload)" value={record.sha256_hash} mono />
-                <Row label="RSA Signature" value={`${record.signature.slice(0, 48)}...`} mono />
-              </div>
+      <Card title="Record">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 24 }}>
+          <div>
+            <div className="label-bold">Classification</div>
+            <div style={{ marginTop: 8 }}>
+              <Badge kind={classificationKind(record.classification)}>
+                {CLASSIFICATION_LABELS[record.classification] ?? record.classification}
+              </Badge>
             </div>
           </div>
+          <div>
+            <div className="label-bold">Uploaded by</div>
+            <div style={{ marginTop: 8, fontSize: 18 }}>{record.uploaded_by}</div>
+          </div>
+          <div>
+            <div className="label-bold">Uploaded at</div>
+            <div style={{ marginTop: 8, fontSize: 18 }}>
+              {new Date(record.uploaded_at).toLocaleString()}
+            </div>
+          </div>
+          <div>
+            <div className="label-bold">SHA-256</div>
+            <div style={{ marginTop: 8 }}>
+              <Mono truncate={32}>{record.sha256_hash}</Mono>
+            </div>
+          </div>
+          <div>
+            <div className="label-bold">Officer signature</div>
+            <div style={{ marginTop: 8 }}>
+              <Mono truncate={32}>{record.signature}</Mono>
+            </div>
+          </div>
+        </div>
 
-          {record.redacted_text && (
-            <div className="card" style={{ marginBottom: 24 }}>
-              <div className="card-header">
-                <span style={{ fontSize: 28, fontWeight: 700 }}>Redacted Extracted Text</span>
+        <div className="flex gap-4" style={{ marginTop: 24 }}>
+          <button className="btn-primary" onClick={runVerify} disabled={busy === "verify"}>
+            {busy === "verify" ? "Verifying…" : "Verify integrity"}
+          </button>
+          <button className="btn-secondary" onClick={runDownload} disabled={busy === "download"}>
+            {busy === "download" ? "Downloading…" : "Download"}
+          </button>
+        </div>
+
+        {verifyResult && (
+          <div style={{ marginTop: 24 }}>
+            <Badge kind={integrityKind}>{verifyResult.integrity}</Badge>
+            <div style={{ marginTop: 12, fontSize: 18 }}>
+              <div>Stored hash matches the bytes in object storage: {String(verifyResult.hash_match)}</div>
+              <div>Signature verifies: {String(verifyResult.signature_valid)}</div>
+              {verifyResult.signed_by && <div>Signed by {verifyResult.signed_by}</div>}
+              {verifyResult.signing_key_status && (
+                <div>Signing key: {verifyResult.signing_key_status.replace(/_/g, " ")}</div>
+              )}
+              {verifyResult.reason && <div>{verifyResult.reason}</div>}
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {(record.redacted_text || record.extracted_text) && (
+        <Card title="Extracted text">
+          <div style={{ display: "grid", gridTemplateColumns: record.extracted_text ? "1fr 1fr" : "1fr", gap: 24 }}>
+            <div>
+              <div className="label-bold" style={{ marginBottom: 8 }}>
+                Redacted
               </div>
-              <div
+              <pre
                 style={{
-                  padding: 24,
-                  fontFamily: "var(--font-data)",
-                  fontSize: 16,
                   whiteSpace: "pre-wrap",
+                  fontSize: 16,
                   background: "var(--color-surface-container-low)",
+                  padding: 16,
+                  border: "2px solid var(--color-border-heavy)",
+                  maxHeight: 320,
+                  overflowY: "auto",
                 }}
               >
-                {record.redacted_text}
-              </div>
+                {record.redacted_text || "—"}
+              </pre>
             </div>
-          )}
-
-          <div className="card" style={{ borderColor: "var(--color-kinetic-blue)", borderWidth: 3 }}>
-            <div className="card-header" style={{ background: "var(--color-slate-dark)" }}>
-              <span style={{ fontSize: 28, fontWeight: 700, color: "#fff" }}>
-                Integrity Verification
-              </span>
-            </div>
-            <div style={{ padding: 32 }}>
-              <p style={{ fontSize: 18, marginBottom: 24 }}>
-                Recomputes the file&apos;s hash from what is currently stored and checks it against
-                the hash and digital signature recorded at upload time.
-              </p>
-
-              <button onClick={handleVerify} className="btn-primary" disabled={verifying}>
-                {verifying ? "Verifying..." : "Verify Integrity"}
-              </button>
-
-              {verifyResult && (
-                <div style={{ marginTop: 32 }}>
-                  <div
-                    className={`status-badge ${
-                      verifyResult.integrity === "VERIFIED"
-                        ? "status-badge--success"
-                        : "status-badge--error"
-                    }`}
-                    style={{ fontSize: 24, padding: "16px 32px", marginBottom: 24 }}
-                  >
-                    {verifyResult.integrity === "VERIFIED" ? "✓ VERIFIED" : "✗ TAMPERED"}
-                  </div>
-
-                  {verifyResult.reason && (
-                    <p style={{ fontSize: 18, marginBottom: 16 }}>{verifyResult.reason}</p>
-                  )}
-
-                  {verifyResult.original_hash && (
-                    <>
-                      <Row label="Hash Recorded at Upload" value={verifyResult.original_hash} mono />
-                      <Row
-                        label="Hash Recomputed Just Now"
-                        value={verifyResult.recomputed_hash || ""}
-                        mono
-                      />
-                      <div style={{ display: "flex", gap: 32, marginTop: 16 }}>
-                        <StatusLine label="Hash Match" ok={!!verifyResult.hash_match} />
-                        <StatusLine label="Signature Valid" ok={!!verifyResult.signature_valid} />
-                      </div>
-                    </>
-                  )}
+            {record.extracted_text && (
+              <div>
+                <div className="label-bold" style={{ marginBottom: 8 }}>
+                  Original
                 </div>
-              )}
-            </div>
+                <pre
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    fontSize: 16,
+                    background: "var(--color-surface-container-low)",
+                    padding: 16,
+                    border: "2px solid var(--color-border-heavy)",
+                    maxHeight: 320,
+                    overflowY: "auto",
+                  }}
+                >
+                  {record.extracted_text}
+                </pre>
+              </div>
+            )}
           </div>
+        </Card>
+      )}
+
+      {canManage && (
+        <>
+          <Card title="Classification">
+            <div style={{ maxWidth: 520 }}>
+              <Field label="Level">
+                <select
+                  className="input-field"
+                  value={newClassification}
+                  onChange={(e) => setNewClassification(e.target.value)}
+                >
+                  {CLASSIFICATIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {CLASSIFICATION_LABELS[value]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Authenticator code">
+                <input
+                  className="input-field data-mono"
+                  style={{ maxWidth: 200 }}
+                  value={classifyMfa}
+                  onChange={(e) => setClassifyMfa(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  inputMode="numeric"
+                />
+              </Field>
+              <button
+                className="btn-primary"
+                onClick={submitReclassify}
+                disabled={busy === "classify" || newClassification === record.classification || classifyMfa.length < 6}
+              >
+                Change classification
+              </button>
+            </div>
+          </Card>
+
+          <Card title="Access grants">
+            <p style={{ fontSize: 18, marginBottom: 24 }}>
+              A Court Official never gets unredacted content from their role alone. Each grant is
+              time-bound, revocable, and appears in the ledger.
+            </p>
+
+            <div style={{ maxWidth: 520, marginBottom: 32 }}>
+              <Field label="Grantee badge number">
+                <input
+                  className="input-field"
+                  value={grantBadge}
+                  onChange={(e) => setGrantBadge(e.target.value)}
+                />
+              </Field>
+              <Field label="Reason" hint="Required, and stored with the grant.">
+                <input
+                  className="input-field"
+                  value={grantReason}
+                  onChange={(e) => setGrantReason(e.target.value)}
+                />
+              </Field>
+              <Field label="Duration (hours)" hint="Maximum 72.">
+                <input
+                  className="input-field"
+                  type="number"
+                  min={1}
+                  max={72}
+                  value={grantHours}
+                  onChange={(e) => setGrantHours(Number(e.target.value))}
+                  style={{ maxWidth: 160 }}
+                />
+              </Field>
+              <Field label="Authenticator code">
+                <input
+                  className="input-field data-mono"
+                  style={{ maxWidth: 200 }}
+                  value={grantMfa}
+                  onChange={(e) => setGrantMfa(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  inputMode="numeric"
+                />
+              </Field>
+              <button
+                className="btn-primary"
+                onClick={submitGrant}
+                disabled={busy === "grant" || !grantBadge || !grantReason || grantMfa.length < 6}
+              >
+                Grant access
+              </button>
+            </div>
+
+            {grants.length === 0 ? (
+              <p style={{ fontSize: 18, color: "var(--color-on-surface-variant)" }}>No grants yet.</p>
+            ) : (
+              <Table headers={["Grantee", "Granted by", "Reason", "Expires", "State", ""]}>
+                {grants.map((grant) => {
+                  const expired = new Date(grant.expires_at) < new Date();
+                  const inactive = Boolean(grant.revoked_at) || expired;
+                  return (
+                    <tr key={grant.id} className="divider">
+                      <Cell bold>{grant.grantee_badge_number}</Cell>
+                      <Cell>{grant.granted_by_badge_number}</Cell>
+                      <Cell>{grant.reason}</Cell>
+                      <Cell>{new Date(grant.expires_at).toLocaleString()}</Cell>
+                      <Cell>
+                        <Badge kind={inactive ? "neutral" : "success"}>
+                          {grant.revoked_at ? "revoked" : expired ? "expired" : "active"}
+                        </Badge>
+                      </Cell>
+                      <Cell>
+                        {!inactive && (
+                          <button
+                            className="btn-secondary"
+                            style={{ minHeight: 40, padding: "0 20px", fontSize: 16 }}
+                            onClick={() => revoke(grant.id)}
+                            disabled={busy === "revoke"}
+                          >
+                            Revoke
+                          </button>
+                        )}
+                      </Cell>
+                    </tr>
+                  );
+                })}
+              </Table>
+            )}
+          </Card>
         </>
       )}
+
+      <Card title="Custody record">
+        {trail.length === 0 ? (
+          <p style={{ fontSize: 18, color: "var(--color-on-surface-variant)" }}>
+            No ledger entries visible for this document.
+          </p>
+        ) : (
+          <Table headers={["#", "Action", "When", "Entry hash", "Anchored"]}>
+            {trail.map((entry) => (
+              <tr key={entry.id} className="divider">
+                <Cell>{entry.id}</Cell>
+                <Cell bold>{entry.action_type.replace(/_/g, " ")}</Cell>
+                <Cell>{new Date(entry.created_at).toLocaleString()}</Cell>
+                <Cell>
+                  <Mono truncate={16}>{entry.entry_hash}</Mono>
+                </Cell>
+                <Cell>
+                  {entry.chain_tx_hash ? (
+                    <Badge kind="success">block {entry.chain_block_number}</Badge>
+                  ) : (
+                    <Badge kind="neutral">pending</Badge>
+                  )}
+                </Cell>
+              </tr>
+            ))}
+          </Table>
+        )}
+      </Card>
     </AppShell>
-  );
-}
-
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="divider" style={{ padding: "12px 0" }}>
-      <div className="label-bold" style={{ marginBottom: 4 }}>
-        {label}
-      </div>
-      <div className={mono ? "data-mono" : ""} style={{ fontSize: 18, wordBreak: "break-all" }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function StatusLine({ label, ok }: { label: string; ok: boolean }) {
-  return (
-    <div style={{ fontSize: 18, fontWeight: 700 }}>
-      {label}:{" "}
-      <span style={{ color: ok ? "var(--color-status-success)" : "var(--color-status-error)" }}>
-        {ok ? "PASS" : "FAIL"}
-      </span>
-    </div>
   );
 }
