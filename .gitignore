@@ -1,6 +1,6 @@
 # Project-specific
-docs/
-!docs/audit-integrity.md,
+docs/*
+!docs/audit-integrity.md
 !docs/access-control.md
 
 # Backend (Python/FastAPI)
