@@ -119,3 +119,26 @@ async def require_fresh_mfa(
     await mfa.mark_code_used(current_user.id, x_mfa_code)
 
     return current_user
+
+
+def require_roles_with_fresh_mfa(*allowed_roles: Role):
+    """Role check plus step-up, as one dependency.
+
+    Declaring both in the signature is what makes the requirement visible in
+    the OpenAPI schema and to the route audit. An equivalent check written
+    inside the handler body is invisible to both, and can be skipped by an
+    early return added later.
+    """
+
+    async def role_guard(
+        current_user: User = Depends(require_fresh_mfa),
+    ) -> User:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to perform this action",
+            )
+
+        return current_user
+
+    return role_guard

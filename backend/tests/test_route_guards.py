@@ -147,22 +147,29 @@ def test_every_admin_route_requires_an_administrator():
             continue
 
         roles = allowed_roles(route)
-        if roles is not None:
-            assert roles == {Role.ADMIN}, f"{method} {path} allows {roles}"
-            continue
+        assert roles is not None, (
+            f"{method} {path} has no role dependency. An inline check inside "
+            f"the handler is invisible here and to the OpenAPI schema."
+        )
+        assert roles == {Role.ADMIN}, f"{method} {path} allows {roles}"
 
-        assert enforces_admin_inline(route), (
-            f"{method} {path} has neither a require_roles(Role.ADMIN) dependency "
-            f"nor an inline admin check that raises 403."
+
+def test_no_admin_route_relies_on_an_inline_role_check():
+    for name, method, path, route in all_routes():
+        if name != "admin":
+            continue
+        assert not enforces_admin_inline(route), (
+            f"{method} {path} still checks the role in its body. Use "
+            f"require_roles_with_fresh_mfa(Role.ADMIN) instead."
         )
 
 
-def test_admin_routes_without_a_role_dependency_at_least_require_step_up():
+def test_admin_write_routes_require_step_up():
     for name, method, path, route in all_routes():
-        if name != "admin" or allowed_roles(route) is not None:
+        if name != "admin" or method == "GET":
             continue
         assert "require_fresh_mfa" in guards_on(route), (
-            f"{method} {path} relies on an inline admin check with no step-up"
+            f"{method} {path} changes state without step-up authentication"
         )
 
 

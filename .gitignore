@@ -1,7 +1,5 @@
 # Project-specific
-docs/*
-!docs/audit-integrity.md
-!docs/access-control.md
+docs/
 
 # Backend (Python/FastAPI)
 __pycache__/

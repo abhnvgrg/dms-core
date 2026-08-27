@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_fresh_mfa, require_roles
+from app.api.deps import (
+    get_current_user,
+    require_roles,
+    require_roles_with_fresh_mfa,
+)
 from app.core.security import hash_password
 from app.database import get_db
 from app.models.entities import (
@@ -52,12 +56,9 @@ async def list_users(
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     payload: UserCreateRequest,
-    current_user: User = Depends(require_fresh_mfa),
+    current_user: User = Depends(require_roles_with_fresh_mfa(Role.ADMIN)),
     session: AsyncSession = Depends(get_db),
 ) -> UserResponse:
-    if current_user.role != Role.ADMIN:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an admin can create users")
-
     existing = await session.scalar(
         select(User).where(User.badge_number == payload.badge_number)
     )
@@ -93,12 +94,9 @@ async def create_user(
 async def update_user(
     user_id: uuid.UUID,
     payload: UserUpdateRequest,
-    current_user: User = Depends(require_fresh_mfa),
+    current_user: User = Depends(require_roles_with_fresh_mfa(Role.ADMIN)),
     session: AsyncSession = Depends(get_db),
 ) -> UserResponse:
-    if current_user.role != Role.ADMIN:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an admin can modify users")
-
     user = await session.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -157,7 +155,7 @@ async def list_user_signing_keys(
 @router.post("/signing-keys/{key_id}/revoke", status_code=status.HTTP_200_OK)
 async def revoke_signing_key(
     key_id: uuid.UUID,
-    current_user: User = Depends(require_fresh_mfa),
+    current_user: User = Depends(require_roles_with_fresh_mfa(Role.ADMIN)),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     """Revoke a compromised officer key.
@@ -165,9 +163,6 @@ async def revoke_signing_key(
     Signatures made before the revocation timestamp stay valid; anything after
     it is reported as pending review rather than silently accepted or rejected.
     """
-    if current_user.role != Role.ADMIN:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an admin can revoke signing keys")
-
     key = await session.get(OfficerSigningKey, key_id)
     if key is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Signing key not found")
@@ -218,12 +213,9 @@ async def list_encryption_keys(
 @router.post("/keys/{purpose}/rotate")
 async def rotate_encryption_key(
     purpose: str,
-    current_user: User = Depends(require_fresh_mfa),
+    current_user: User = Depends(require_roles_with_fresh_mfa(Role.ADMIN)),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    if current_user.role != Role.ADMIN:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an admin can rotate encryption keys")
-
     try:
         purpose_value = EncryptionKeyPurpose(purpose)
     except ValueError:
