@@ -2,10 +2,6 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-/**
- * QR scanning through the browser's own BarcodeDetector, with manual entry as
- * the fallback. No third-party scanner library, and nothing leaves the device.
- */
 
 interface DetectedBarcode {
   rawValue: string;
@@ -30,8 +26,6 @@ export default function QrScanner({ onScan }: { onScan: (qrUuid: string) => void
   const [error, setError] = useState("");
   const [manual, setManual] = useState("");
 
-  // Whether the browser can decode barcodes is a property of the platform, not
-  // React state, so it is read as an external snapshot rather than in an effect.
   const supported = useSyncExternalStore(
     () => () => {},
     () => typeof window.BarcodeDetector === "function",
@@ -73,7 +67,6 @@ export default function QrScanner({ onScan }: { onScan: (qrUuid: string) => void
             return;
           }
         } catch {
-          // A frame that fails to decode is normal; keep going.
         }
         requestAnimationFrame(() => void tick());
       };

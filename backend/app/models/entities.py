@@ -395,13 +395,6 @@ class EncryptionKey(TimestampMixin, Base):
     rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 class OfficerSigningKey(TimestampMixin, Base):
-    """A public key an officer generated in their browser.
-
-    The private half never reaches the server, so a signature verified against one
-    of these rows is attributable to the officer rather than to the backend. Old
-    keys are retired rather than deleted so historical signatures still verify.
-    """
-
     __tablename__ = "officer_signing_keys"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -433,12 +426,6 @@ class OfficerSigningKey(TimestampMixin, Base):
 
 
 class AssetTransfer(Base):
-    """One custody handover, with the officer's client-side signature over it.
-
-    Kept as its own table rather than living only in the audit payload so the
-    signed message can be reconstructed and re-verified later.
-    """
-
     __tablename__ = "asset_transfers"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -486,13 +473,6 @@ class AssetTransfer(Base):
 
 
 class AuditCheckpoint(Base):
-    """A signed summary of a run of ledger entries, mirrored to write-once storage.
-
-    The in-database hash chain proves internal consistency; the checkpoint proves
-    the chain has not been regenerated wholesale, because its signature is made
-    with a key the database never sees and its copy lives outside the database.
-    """
-
     __tablename__ = "audit_checkpoints"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -512,13 +492,6 @@ class AuditCheckpoint(Base):
 
 
 class KnownDevice(Base):
-    """A browser and network an officer has already been seen logging in from.
-
-    v4 §5 mandates a second factor for logins from anywhere unfamiliar. For an
-    enrolled user that is already true of every login; this is what makes the
-    rule bite for someone who has not enrolled yet.
-    """
-
     __tablename__ = "known_devices"
     __table_args__ = (
         UniqueConstraint("user_id", "fingerprint", name="uq_known_device"),

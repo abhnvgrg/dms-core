@@ -38,12 +38,6 @@ def transfer_message(
     new_custody_status: str,
     receiving_officer_badge_number: str,
 ) -> str:
-    """The exact string the officer's browser signs.
-
-    Canonical JSON so the client and server agree byte-for-byte on what was
-    signed, including the expected prior status that makes the conflict check
-    meaningful.
-    """
     return json.dumps(
         {
             "qr_uuid": str(qr_uuid),
@@ -125,7 +119,6 @@ async def get_asset_by_qr(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> AssetResponse:
-    """Resolve a scanned QR tag to the asset it belongs to."""
     asset = await session.scalar(select(PhysicalAsset).where(PhysicalAsset.qr_uuid == qr_uuid))
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No asset carries that tag")
@@ -140,7 +133,6 @@ async def list_transfers(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[TransferRecordResponse]:
-    """The custody history, with each handover re-verified against its key."""
     asset = await session.scalar(select(PhysicalAsset).where(PhysicalAsset.id == asset_id))
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
@@ -190,12 +182,6 @@ async def transfer_asset(
     current_user: User = Depends(require_fresh_mfa),
     session: AsyncSession = Depends(get_db),
 ) -> AssetResponse:
-    """Hand custody to another officer.
-
-    Carries the client's expected prior status so that two officers who both
-    prepared a transfer offline cannot both succeed: the second one to sync
-    hits a 409 and is recorded as a conflict for a human to resolve.
-    """
     asset = await session.scalar(select(PhysicalAsset).where(PhysicalAsset.id == asset_id))
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")

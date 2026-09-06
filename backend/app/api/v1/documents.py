@@ -85,11 +85,6 @@ async def _resolve_case(case_ref: str, current_user: User, session: AsyncSession
 async def _verify_document_signature(
     document: Document, session: AsyncSession
 ) -> tuple[bool, str | None, str | None]:
-    """Re-check the upload signature against the key it was made with.
-
-    Documents predating client-side key custody carry a server signature; those
-    are reported as legacy rather than quietly treated as equivalent.
-    """
     if not document.signature:
         return False, None, None
 
@@ -200,8 +195,6 @@ async def upload_document(
         except malware_scan.ScannerUnavailable:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Malware scanner unavailable, upload rejected")
 
-    # Structural check before anything that parses the file. A PDF carrying
-    # JavaScript never reaches OCR, NER or the embedding model.
     try:
         file_inspection.inspect(file_bytes, content_type)
     except file_inspection.FileRejected as rejected:
@@ -359,8 +352,6 @@ async def search_documents(
     result = await session.execute(query)
 
     results: list[DocumentSearchResult] = []
-    # A Court Official searching sees that a document exists, not what is in it.
-    # Content for them is gated behind an explicit, time-bound grant instead.
     metadata_only = current_user.role == Role.COURT_OFFICIAL
 
     for document, fir_number, full_name, distance in result.unique().all():

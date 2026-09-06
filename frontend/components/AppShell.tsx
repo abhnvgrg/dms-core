@@ -32,8 +32,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
       router.push("/login");
       return;
     }
-    // A privileged account that has not finished enrolling can only reach
-    // /security, which is where enrollment happens.
     if (user.mfa_enrollment_required && pathname !== "/security") {
       router.push("/security");
     }

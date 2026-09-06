@@ -39,8 +39,6 @@ export default function UploadPage() {
     setResult(null);
 
     try {
-      // Hash and sign before the bytes leave the browser: the server is told
-      // what was signed and can only verify, never produce, that signature.
       setStage("Hashing file…");
       const sha256 = await sha256Hex(file);
 

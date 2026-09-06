@@ -1,13 +1,3 @@
-"""Signed audit checkpoints, mirrored to write-once object storage.
-
-The in-database hash chain proves the ledger is internally consistent. It does
-not prove the ledger was not regenerated from scratch, because whoever can
-rewrite rows can also recompute every hash. A checkpoint closes that: it is
-signed with a key the database never holds, and a copy is written to a bucket
-under object lock, so verification can ask three questions instead of one --
-is the chain consistent, do the entries still hash to the recorded checkpoint,
-and is the checkpoint's signature intact.
-"""
 import base64
 import hashlib
 import json
@@ -25,11 +15,6 @@ _PADDING = padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=32)
 
 
 async def _load_signing_key(session: AsyncSession) -> tuple[int, rsa.RSAPrivateKey]:
-    """Fetch (or mint) the checkpoint signing key, wrapped under the root key.
-
-    Distinct from the officer keys and from both data encryption keys: this one
-    signs checkpoints and nothing else.
-    """
     version, raw = await key_management.get_or_create_pem_key(
         session, EncryptionKeyPurpose.CHECKPOINT_SIGNING
     )
@@ -58,8 +43,6 @@ async def get_latest(session: AsyncSession) -> AuditCheckpoint | None:
     )
 
 
-# A checkpoint is due once either threshold is reached, so a busy period is
-# covered by volume and a quiet one by the clock.
 CHECKPOINT_AFTER_ENTRIES = 50
 CHECKPOINT_AFTER_SECONDS = 300
 
@@ -67,12 +50,6 @@ CHECKPOINT_AFTER_SECONDS = 300
 async def create_checkpoint(
     session: AsyncSession, force: bool = True
 ) -> AuditCheckpoint | None:
-    """Checkpoint every ledger entry written since the last one.
-
-    With `force=False` the thresholds decide, which is how the scheduled job
-    calls it; the admin endpoint forces one regardless. Returns None when there
-    is nothing to sign, or nothing due yet.
-    """
     latest = await get_latest(session)
     start_after = latest.to_entry_id if latest else 0
 
@@ -115,8 +92,6 @@ async def create_checkpoint(
     session.add(checkpoint)
     await session.flush()
 
-    # Mirror to the write-once bucket. A storage outage must not lose the
-    # checkpoint itself, so the row is kept either way and object_key stays null.
     document = {
         "checkpoint_id": checkpoint.id,
         "from_entry_id": checkpoint.from_entry_id,
@@ -138,7 +113,6 @@ async def create_checkpoint(
 
 
 async def verify_checkpoints(session: AsyncSession) -> dict:
-    """Re-derive every checkpoint from the ledger and re-check its signature."""
     result = await session.execute(select(AuditCheckpoint).order_by(AuditCheckpoint.id.asc()))
     checkpoints = list(result.scalars().all())
 

@@ -17,15 +17,6 @@ async def _create_checkpoint_async() -> int | None:
 
 @celery_app.task(name="create_audit_checkpoint")
 def create_audit_checkpoint() -> dict:
-    """Sign off the ledger entries written since the last checkpoint, when due.
-
-    Runs often and checkpoints only once a threshold is crossed -- entry count
-    or elapsed time, whichever comes first.
-
-    Deliberately not audited itself: an entry written by the checkpointer would
-    always fall outside the checkpoint that just ran, so the ledger would never
-    reach a quiet state.
-    """
     try:
         checkpoint_id = asyncio.run(_create_checkpoint_async())
     finally:

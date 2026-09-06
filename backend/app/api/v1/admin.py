@@ -116,8 +116,6 @@ async def update_user(
                 "to_role": payload.role.value,
             },
         )
-        # A role change alters what every live session is allowed to do, so the
-        # old sessions do not get to keep their previous authority.
         await sessions.revoke_all_sessions(session, user.id)
 
     if payload.is_active is not None and payload.is_active != user.is_active:
@@ -160,11 +158,6 @@ async def revoke_signing_key(
     current_user: User = Depends(require_fresh_mfa),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Revoke a compromised officer key.
-
-    Signatures made before the revocation timestamp stay valid; anything after
-    it is reported as pending review rather than silently accepted or rejected.
-    """
     if current_user.role != Role.ADMIN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an admin can revoke signing keys")
 

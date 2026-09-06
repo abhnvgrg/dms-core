@@ -62,11 +62,6 @@ async def rotate_key(session: AsyncSession, purpose: EncryptionKeyPurpose) -> in
 async def get_or_create_pem_key(
     session: AsyncSession, purpose: EncryptionKeyPurpose
 ) -> tuple[int, bytes]:
-    """Like get_active_key, but the wrapped material is an RSA private key.
-
-    Used for the checkpoint signing key, which has to be asymmetric so that
-    verifying a checkpoint never requires the ability to forge one.
-    """
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -90,7 +85,6 @@ async def get_or_create_pem_key(
 
 
 async def rotate_pem_key(session: AsyncSession, purpose: EncryptionKeyPurpose) -> int:
-    """Rotate an asymmetric key, keeping old versions so old signatures verify."""
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
 

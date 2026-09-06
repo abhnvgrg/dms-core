@@ -18,7 +18,6 @@ def verify_code(secret: str, code: str) -> bool:
 
 
 async def is_code_used(user_id, code: str) -> bool:
-    """TOTP codes stay valid for a window; replay within it is still replay."""
     from app.services.rate_limit import _redis
 
     return await _redis().exists(f"mfa_used:{user_id}:{code}") == 1

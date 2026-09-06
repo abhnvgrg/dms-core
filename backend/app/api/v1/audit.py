@@ -25,12 +25,6 @@ async def verify_audit_ledger(
     current_user: User = Depends(require_roles(Role.ADMIN)),
     session: AsyncSession = Depends(get_db),
 ) -> LedgerVerifyResponse:
-    """Three questions, not one.
-
-    Is the chain internally consistent; do the entries still hash to each
-    recorded checkpoint; and is each checkpoint signature intact. A ledger
-    rewritten wholesale passes the first and fails the other two.
-    """
     chain = await verify_ledger(session)
     checkpoint_result = await checkpoints.verify_checkpoints(session)
 
@@ -86,7 +80,6 @@ async def create_checkpoint_now(
     current_user: User = Depends(require_roles(Role.ADMIN)),
     session: AsyncSession = Depends(get_db),
 ) -> CheckpointResponse:
-    """Force a checkpoint instead of waiting for the scheduled one."""
     checkpoint = await checkpoints.create_checkpoint(session)
     if checkpoint is None:
         raise HTTPException(

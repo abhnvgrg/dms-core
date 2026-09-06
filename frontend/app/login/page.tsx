@@ -32,8 +32,6 @@ export default function LoginPage() {
       router.push(response.mfa_enrollment_required ? "/security" : "/dashboard");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed";
-      // The backend tells us a second factor is needed by rejecting the
-      // password-only attempt; surface the code field rather than a dead end.
       if (message.toLowerCase().includes("mfa")) setMfaRequired(true);
       setError(message);
       if (err instanceof ApiError && err.status === 429) {

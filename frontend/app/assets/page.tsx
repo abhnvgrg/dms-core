@@ -56,7 +56,6 @@ export default function AssetsPage() {
   const canRegister =
     user?.role === "investigating_officer" || user?.role === "forensics_officer" || user?.role === "admin";
 
-  // Connectivity is a browser fact, not React state.
   const online = useSyncExternalStore(subscribeToConnectivity, () => navigator.onLine, () => true);
 
   useEffect(() => {
@@ -72,11 +71,9 @@ export default function AssetsPage() {
     };
   }, []);
 
-  // Coming back online is the moment queued handovers should be attempted.
   useEffect(() => {
     if (!online || queue.length === 0) return;
     void handleSync();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online]);
 
   useEffect(() => {

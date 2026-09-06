@@ -11,7 +11,7 @@ from app.tasks.retention_purge import purge_expired_documents_in_session
 
 router = APIRouter(prefix="/retention", tags=["retention"])
 
-DEFAULT_RETENTION_MINUTES = 525_600  # ~365 days
+DEFAULT_RETENTION_MINUTES = 525_600
 
 
 async def _get_or_create_policy(session: AsyncSession) -> RetentionPolicy:
@@ -63,7 +63,5 @@ async def trigger_purge_now(
     current_user: User = Depends(require_roles(Role.ADMIN)),
     session: AsyncSession = Depends(get_db),
 ) -> PurgeNowResponse:
-    """Run the retention purge immediately instead of waiting for the scheduled beat job.
-    Intended for demos/manual admin use — runs against the current retention policy."""
     purged_count, retention_minutes = await purge_expired_documents_in_session(session)
     return PurgeNowResponse(purged_count=purged_count, retention_minutes=retention_minutes)

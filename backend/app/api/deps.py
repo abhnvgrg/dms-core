@@ -39,8 +39,6 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # A session issued to a privileged user who has not yet enrolled MFA can do
-    # exactly one thing: enrol. Everything else is closed until they do.
     if record.mfa_pending:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -54,7 +52,6 @@ async def get_enrolling_user(
     record: Session = Depends(get_session_record),
     session: AsyncSession = Depends(get_db),
 ) -> User:
-    """Like get_current_user, but usable from an enrollment-only session."""
     user = await session.get(User, record.user_id)
 
     if user is None or not user.is_active:
@@ -87,11 +84,6 @@ async def require_fresh_mfa(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> User:
-    """Step-up: a valid session is not enough for actions with legal consequences.
-
-    Fails closed. A user who has never enrolled cannot perform these actions at
-    all -- being un-enrolled is not a way to skip the check.
-    """
     if not current_user.mfa_enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

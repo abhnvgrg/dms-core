@@ -1,7 +1,5 @@
 from passlib.context import CryptContext
 
-# Argon2id is the target scheme; bcrypt stays listed so hashes created before
-# the switch still verify and get upgraded on the owner's next login.
 password_context = CryptContext(
     schemes=["argon2", "bcrypt"],
     deprecated="auto",

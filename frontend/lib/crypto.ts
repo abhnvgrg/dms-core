@@ -1,13 +1,5 @@
 "use client";
 
-/**
- * Officer signing keys, generated and held in the browser.
- *
- * The private key is created non-extractable and stored as a CryptoKey in
- * IndexedDB, so it cannot be read out by page script, cannot be serialised into
- * application state, and never reaches the backend. The server only ever sees
- * the public half and the signatures.
- */
 
 const DB_NAME = "nyayvault-keys";
 const STORE = "signing-keys";
@@ -20,7 +12,6 @@ const ALGORITHM: RsaHashedKeyGenParams = {
   hash: "SHA-256",
 };
 
-// Must match the salt length the backend verifies with.
 const SALT_LENGTH = 32;
 
 function openDb(): Promise<IDBDatabase> {
@@ -95,7 +86,6 @@ export function cryptoAvailable(): boolean {
   );
 }
 
-/** Generate a keypair for this officer. The private half stays in IndexedDB. */
 export async function generateKeypair(badgeNumber: string): Promise<string> {
   const pair = await crypto.subtle.generateKey(ALGORITHM, false, ["sign", "verify"]);
   const spki = await crypto.subtle.exportKey("spki", pair.publicKey);
@@ -111,10 +101,6 @@ export async function hasLocalKey(badgeNumber: string): Promise<boolean> {
   return (await idbGet<CryptoKey>(privateKeyId(badgeNumber))) !== undefined;
 }
 
-export async function localPublicKeyPem(badgeNumber: string): Promise<string | undefined> {
-  return idbGet<string>(publicKeyId(badgeNumber));
-}
-
 export async function forgetLocalKey(badgeNumber: string): Promise<void> {
   await idbDelete(privateKeyId(badgeNumber));
   await idbDelete(publicKeyId(badgeNumber));
@@ -127,7 +113,6 @@ export class NoSigningKey extends Error {
   }
 }
 
-/** Sign a message with this officer's private key. */
 export async function signMessage(badgeNumber: string, message: string): Promise<string> {
   const key = await idbGet<CryptoKey>(privateKeyId(badgeNumber));
   if (!key) throw new NoSigningKey();
@@ -140,7 +125,6 @@ export async function signMessage(badgeNumber: string, message: string): Promise
   return toBase64(signature);
 }
 
-/** SHA-256 of a file, hex encoded -- the value the officer signs on upload. */
 export async function sha256Hex(file: Blob): Promise<string> {
   const buffer = await file.arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", buffer);
@@ -149,10 +133,6 @@ export async function sha256Hex(file: Blob): Promise<string> {
     .join("");
 }
 
-/**
- * The exact string the backend reconstructs for a custody transfer.
- * Key order and separators must match `transfer_message` in app/api/v1/assets.py.
- */
 export function transferMessage(params: {
   qr_uuid: string;
   expected_prior_custody_status: string;

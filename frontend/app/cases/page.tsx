@@ -34,7 +34,6 @@ export default function CasesPage() {
       try {
         setUsers(await fetchUsers());
       } catch {
-        // Assignment by picking from a list is admin-only; IOs type the id.
       }
     }
   }
@@ -56,7 +55,6 @@ export default function CasesPage() {
         const loaded = await fetchUsers();
         if (!cancelled) setUsers(loaded);
       } catch {
-        // Picking from a list is admin-only; other roles type the id.
       }
     })();
 

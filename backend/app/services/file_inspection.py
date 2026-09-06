@@ -1,19 +1,6 @@
-"""Structural sanity checks that run before any parser sees an uploaded file.
-
-The OCR, NER and embedding stages are all parsers, and they run over files of
-unknown provenance. Malware scanning catches known-bad content; this catches
-files that are structurally hostile -- a PDF carrying JavaScript or an auto-run
-action -- before they reach anything that would interpret them.
-
-Deliberately implemented as a byte scan rather than a PDF parse: handing the
-file to a PDF library to decide whether it is safe to hand to a PDF library
-would defeat the point.
-"""
 import io
 import re
 
-# Actions a PDF has no business carrying in an evidence pipeline. /AA is the
-# additional-actions dictionary, which is how auto-run is usually smuggled in.
 _DANGEROUS_PDF_TOKENS: tuple[tuple[bytes, str], ...] = (
     (b"/JavaScript", "embedded JavaScript"),
     (b"/JS", "embedded JavaScript"),
@@ -67,7 +54,6 @@ def _inspect_image(data: bytes, content_type: str) -> None:
 
 
 def inspect(data: bytes, content_type: str) -> None:
-    """Raise FileRejected if the file is structurally unfit to process."""
     if content_type == "application/pdf":
         _inspect_pdf(data)
     elif content_type in ("image/jpeg", "image/png"):

@@ -17,7 +17,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.alter_column('retention_policies', 'retention_days', new_column_name='retention_minutes')
-    # Existing values were day-counts; convert to the equivalent minute-count.
     op.execute("UPDATE retention_policies SET retention_minutes = retention_minutes * 1440")
 
 

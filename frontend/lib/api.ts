@@ -5,7 +5,6 @@ const ACCESS_KEY = "dms_token";
 const REFRESH_KEY = "dms_refresh_token";
 const USER_KEY = "dms_user";
 
-// ---------------------------------------------------------------- types ----
 
 export interface LoginResponse {
   access_token: string;
@@ -207,9 +206,8 @@ export interface RetentionPolicy {
   updated_at: string;
 }
 
-// ------------------------------------------------------------- plumbing ----
 
-export function getToken(): string | null {
+function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(ACCESS_KEY);
 }
@@ -230,12 +228,6 @@ export function clearToken() {
   localStorage.removeItem(USER_KEY);
 }
 
-/**
- * Access tokens last 15 minutes by design, so a session that only tracked the
- * access token would drop the user at the login screen mid-task. One refresh
- * is attempted per 401, and concurrent callers share it rather than each
- * burning a single-use refresh token -- reuse would revoke the whole family.
- */
 let refreshInFlight: Promise<boolean> | null = null;
 
 async function refreshSession(): Promise<boolean> {
@@ -257,7 +249,6 @@ async function refreshSession(): Promise<boolean> {
       } catch {
         return false;
       } finally {
-        // Cleared on the next tick so callers awaiting this attempt all see it.
         setTimeout(() => {
           refreshInFlight = null;
         }, 0);
@@ -304,16 +295,11 @@ async function authFetch(path: string, options: RequestOptions = {}, retry = tru
   const res = await fetch(`${API_V1}${path}`, { ...init, headers });
 
   if (res.status === 401 && retry) {
-    // A body already consumed cannot be replayed, so only retry idempotent
-    // shapes that carry no stream: JSON strings and bodiless requests.
     const replayable = !init.body || typeof init.body === "string";
     if (replayable && (await refreshSession())) {
       return authFetch(path, options, false);
     }
     clearToken();
-    // A full navigation, not router.push: the session is gone, so every cached
-    // client component holding user data should be discarded with it.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     if (typeof window !== "undefined") window.location.href = "/login";
     throw new ApiError(401, "Session expired");
   }
@@ -345,7 +331,6 @@ async function sendJson<T>(
   return res.json();
 }
 
-// ------------------------------------------------------------------ auth ----
 
 export async function login(
   username: string,
@@ -370,7 +355,6 @@ export async function logout(): Promise<void> {
   try {
     await authFetch("/auth/logout", { method: "POST" }, false);
   } catch {
-    // Signing out locally matters more than the server acknowledging it.
   }
 }
 
@@ -386,7 +370,6 @@ export function enrollMfa(): Promise<{ secret: string; provisioning_uri: string 
   return sendJson("/auth/mfa/enroll", "POST", undefined, "Could not start MFA enrollment");
 }
 
-/** Returns a fresh session: enrolling is a privilege change, so the old token is retired. */
 export function activateMfa(code: string): Promise<LoginResponse> {
   return sendJson("/auth/mfa/activate", "POST", { code }, "Could not activate MFA");
 }
@@ -399,7 +382,6 @@ export function fetchSigningKeys(): Promise<SigningKey[]> {
   return getJson("/auth/signing-keys", "Could not load signing keys");
 }
 
-// ----------------------------------------------------------------- cases ----
 
 export function fetchCases(): Promise<CaseSummary[]> {
   return getJson("/cases", "Could not load cases");
@@ -417,7 +399,6 @@ export function assignToCase(caseId: string, userId: string): Promise<{ status: 
   return sendJson(`/cases/${caseId}/assignments`, "POST", { user_id: userId }, "Could not assign user");
 }
 
-// ------------------------------------------------------------- documents ----
 
 export function fetchEvidenceList(): Promise<EvidenceSummary[]> {
   return getJson("/documents", "Failed to load evidence list");
@@ -515,7 +496,6 @@ export function revokeAccessGrant(
   );
 }
 
-// ----------------------------------------------------------------- audit ----
 
 export function verifyLedger(): Promise<LedgerVerification> {
   return getJson("/audit/verify", "Could not verify the ledger");
@@ -537,7 +517,6 @@ export function verifyEntryOnchain(entryId: number): Promise<OnchainVerification
   return sendJson(`/audit/ledger/${entryId}/verify-onchain`, "POST", undefined, "On-chain check failed");
 }
 
-// ---------------------------------------------------------------- assets ----
 
 export function fetchAssets(caseId: string): Promise<Asset[]> {
   return getJson(`/assets?case_id=${encodeURIComponent(caseId)}`, "Could not load physical evidence");
@@ -572,7 +551,6 @@ export function transferAsset(
   return sendJson(`/assets/${assetId}/transfer`, "POST", payload, "Transfer failed", mfaCode);
 }
 
-// ----------------------------------------------------------------- admin ----
 
 export function fetchUsers(): Promise<AdminUser[]> {
   return getJson("/admin/users", "Could not load users");
@@ -614,7 +592,6 @@ export function rotateEncryptionKey(
   return sendJson(`/admin/keys/${purpose}/rotate`, "POST", undefined, "Could not rotate the key", mfaCode);
 }
 
-// ------------------------------------------------------------- retention ----
 
 export function fetchRetentionPolicy(): Promise<RetentionPolicy> {
   return getJson("/retention/policy", "Could not load the retention policy");

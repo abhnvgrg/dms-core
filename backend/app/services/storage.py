@@ -56,19 +56,12 @@ def download_file(object_key: str) -> bytes:
             response.release_conn()
 
 def ensure_checkpoint_bucket_exists() -> None:
-    """A second bucket, object-locked so checkpoints can be written but not replaced.
-
-    Object lock can only be turned on at creation time, so an existing bucket is
-    left as-is rather than silently pretending to be write-once.
-    """
     if _client.bucket_exists(settings.minio_checkpoint_bucket):
         return
 
     try:
         _client.make_bucket(settings.minio_checkpoint_bucket, object_lock=True)
     except (S3Error, ValueError):
-        # Object lock needs a MinIO deployment with versioning support; fall
-        # back to a plain bucket rather than losing the checkpoint entirely.
         _client.make_bucket(settings.minio_checkpoint_bucket)
 
 

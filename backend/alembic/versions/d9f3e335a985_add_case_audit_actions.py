@@ -22,8 +22,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Postgres does not support removing enum values directly.
-    # A downgrade would require recreating the enum type without these
-    # values and migrating all dependent columns — not implemented here
-    # since it's destructive and not needed for this project's timeline.
     pass

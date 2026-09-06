@@ -1,9 +1,3 @@
-"""Officer signing-key custody.
-
-The private half of these keys is generated in the officer's browser and never
-leaves it, so the server can only ever verify. Registering, rotating and revoking
-a key are all recorded in the audit ledger by the callers in `app/api/v1`.
-"""
 import hashlib
 from datetime import datetime, timezone
 
@@ -14,8 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import OfficerSigningKey, SigningKeyStatus, User
 
-# WebCrypto signs with a fixed salt length equal to the digest size; python's
-# AUTO would also verify, but pinning it keeps both halves explicit.
 _PSS_PADDING = padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=32)
 
 MIN_KEY_SIZE_BITS = 2048
@@ -64,11 +56,6 @@ async def list_keys(session: AsyncSession, user_id) -> list[OfficerSigningKey]:
 async def register_key(
     session: AsyncSession, user: User, public_key_pem: str
 ) -> OfficerSigningKey:
-    """Register a new public key, retiring whatever the officer had before.
-
-    Retiring rather than deleting is what keeps historical signatures verifiable
-    after a rotation.
-    """
     _load_public_key(public_key_pem)
 
     digest = fingerprint(public_key_pem)
@@ -111,7 +98,6 @@ async def revoke_key(
 
 
 def verify_signature(public_key_pem: str, message: str, signature_b64: str) -> bool:
-    """Verify a base64 RSA-PSS/SHA-256 signature produced by WebCrypto."""
     import base64
 
     try:
@@ -128,11 +114,6 @@ def verify_signature(public_key_pem: str, message: str, signature_b64: str) -> b
 
 
 def signature_status(key: OfficerSigningKey, signed_at: datetime) -> str:
-    """How much a signature made with this key is worth now.
-
-    Signatures predating a revocation stay valid; anything after it is suspect
-    until a human has looked at it.
-    """
     if key.status != SigningKeyStatus.REVOKED or key.revoked_at is None:
         return "valid"
 

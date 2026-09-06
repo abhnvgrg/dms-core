@@ -29,18 +29,10 @@ celery_app.conf.update(
 celery_app.conf.beat_schedule = {
     "purge-expired-documents": {
         "task": "purge_expired_documents",
-        # Runs every 30s so a short demo retention window (e.g. 2 minutes)
-        # actually gets swept automatically within a live demo. A real
-        # deployment with day-scale retention could relax this to hourly/daily.
         "schedule": 30.0,
     },
     "create-audit-checkpoint": {
         "task": "create_audit_checkpoint",
-        # Checked every minute; the task itself decides whether a checkpoint is
-        # due, on entry count or elapsed time (see app/services/checkpoints.py).
-        # Those thresholds are the detection window: tampering is caught at the
-        # next checkpoint, so lowering them narrows the gap at the cost of more
-        # signing work and more objects in the write-once bucket.
         "schedule": 60.0,
     },
     "expire-access-grants": {

@@ -1,10 +1,3 @@
-"""One-time deploy script for the AuditAnchor contract to a local Ganache dev chain.
-
-Usage:
-    1. docker compose -f infrastructure/docker-compose.yml up -d ganache
-    2. python scripts/deploy_contract.py
-    3. Copy the printed contract address into BLOCKCHAIN_CONTRACT_ADDRESS in .env
-"""
 import json
 import os
 

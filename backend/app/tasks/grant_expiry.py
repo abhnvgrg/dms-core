@@ -12,12 +12,6 @@ EXPIRY_MARKER = "expired"
 
 
 async def _expire_grants_async() -> int:
-    """Record grants that have lapsed.
-
-    Access is already denied the moment `expires_at` passes -- enforcement reads
-    the timestamp directly. This exists so expiry appears in the custody record
-    as an event, rather than as an absence of one.
-    """
     now = datetime.now(timezone.utc)
     expired_count = 0
 

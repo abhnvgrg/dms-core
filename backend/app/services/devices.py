@@ -1,11 +1,3 @@
-"""Recognising the browser and network an officer normally logs in from.
-
-v4 §5 requires a second factor for any login from a new or unrecognised device
-or IP range. For a user with MFA enabled that is satisfied already, since a code
-is demanded on every login. This exists so the rule still means something for a
-user who has not enrolled: an unfamiliar login gets an enrollment-only session
-rather than a free pass.
-"""
 import hashlib
 from datetime import datetime, timezone
 
@@ -16,11 +8,10 @@ from app.models.entities import KnownDevice, User
 
 
 def _ip_range(ip_address: str | None) -> str:
-    """Collapse an address to its range, so a new lease is not a new device."""
     if not ip_address:
         return "unknown"
 
-    if ":" in ip_address:  # IPv6: keep the routing prefix
+    if ":" in ip_address:
         return ":".join(ip_address.split(":")[:4])
 
     octets = ip_address.split(".")
@@ -51,7 +42,6 @@ async def is_known(
 async def remember(
     session: AsyncSession, user: User, user_agent: str | None, ip_address: str | None
 ) -> None:
-    """Record the device, but only once the login has actually been allowed."""
     digest = fingerprint(user_agent, ip_address)
     now = datetime.now(timezone.utc)
 

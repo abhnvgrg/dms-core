@@ -21,7 +21,6 @@ from app.services.audit import append_entry
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
-# Roles that cannot operate the system at all without a second factor.
 MFA_MANDATORY_ROLES = (Role.ADMIN,)
 
 
@@ -95,10 +94,6 @@ async def login(
                 detail="Invalid or missing MFA code",
             )
 
-    # An account that must have a second factor, and one arriving from an
-    # unfamiliar browser or network, both get an enrollment-only session rather
-    # than a refusal: there has to be a way in to set the factor up, but that
-    # session cannot touch evidence until enrollment completes.
     known_device = await devices.is_known(session, user, user_agent, client_ip)
     mfa_pending = not user.mfa_enabled and (
         user.role in MFA_MANDATORY_ROLES or not known_device
@@ -110,9 +105,6 @@ async def login(
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(form_data.password)
 
-    # Only a login that actually cleared every required factor makes the device
-    # familiar. Remembering an enrollment-gated one would let the gate be walked
-    # past on the second attempt.
     if not mfa_pending:
         await devices.remember(session, user, user_agent, client_ip)
 
@@ -186,7 +178,6 @@ async def logout_everywhere(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> None:
-    """Kill every session for this account, including the one making the call."""
     await sessions.revoke_all_sessions(session, current_user.id)
     await session.commit()
 
@@ -214,13 +205,6 @@ async def activate_mfa(
     current_user: User = Depends(get_enrolling_user),
     session: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
-    """Confirm enrollment, then hand back a fresh session.
-
-    Enrolling raises what this account is allowed to do, so the token that was
-    issued at the lower privilege level is retired rather than silently
-    promoted — v4 §4 closes session fixation on privilege change, not only on
-    login.
-    """
     secret = await encryption.decrypt_text(session, current_user.totp_secret_encrypted)
     if not secret or not mfa.verify_code(secret, payload.code):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA code")
@@ -264,11 +248,6 @@ async def register_signing_key(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> SigningKeyResponse:
-    """Register the public half of a keypair generated in the officer's browser.
-
-    Called again on rotation: the previous key is retired, not deleted, so
-    signatures made with it still verify.
-    """
     try:
         key = await officer_keys.register_key(session, current_user, payload.public_key_pem)
     except officer_keys.InvalidPublicKey as error:

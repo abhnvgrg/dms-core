@@ -2,14 +2,6 @@
 
 import { ApiError, transferAsset } from "./api";
 
-/**
- * Custody transfers prepared while offline.
- *
- * Each queued transfer is already signed and carries the custody status the
- * officer believed the item was in. That is what makes a late sync safe: if
- * someone else moved the item first, the backend rejects this one with 409 and
- * records the conflict, instead of quietly applying a second handover.
- */
 
 const QUEUE_KEY = "dms_offline_transfers";
 
@@ -65,10 +57,6 @@ export interface SyncOutcome {
   failed: number;
 }
 
-/**
- * Try to apply everything queued. Conflicts stay in the queue, flagged, so the
- * officer sees that their handover did not happen and why.
- */
 export async function syncQueue(): Promise<SyncOutcome> {
   const outcome: SyncOutcome = { applied: 0, conflicts: 0, failed: 0 };
 

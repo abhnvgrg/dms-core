@@ -10,11 +10,10 @@ from app.services import storage
 from app.services.audit import append_entry
 from app.tasks.celery_app import celery_app
 
-DEFAULT_RETENTION_MINUTES = 525_600  # ~365 days
+DEFAULT_RETENTION_MINUTES = 525_600
 
 
 async def purge_expired_documents_in_session(session: AsyncSession) -> tuple[int, int]:
-    """Purge expired documents using an existing session. Returns (purged_count, retention_minutes)."""
     policy = await session.scalar(
         select(RetentionPolicy).order_by(RetentionPolicy.updated_at.desc()).limit(1)
     )

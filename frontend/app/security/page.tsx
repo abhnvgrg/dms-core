@@ -86,8 +86,6 @@ export default function SecurityPage() {
     setError("");
     setBusy(true);
     try {
-      // Enrollment raises this account's privileges, so the server retires the
-      // token it was issued at the lower level and hands back a new session.
       signIn(await activateMfa(code));
       setSecret(null);
       setProvisioningUri(null);

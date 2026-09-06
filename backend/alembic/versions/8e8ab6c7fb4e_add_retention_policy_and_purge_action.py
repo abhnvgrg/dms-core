@@ -38,4 +38,3 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table('retention_policies')
-    # Postgres does not support removing enum values directly; not implemented.

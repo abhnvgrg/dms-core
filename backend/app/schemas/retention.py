@@ -14,7 +14,7 @@ class RetentionPolicyResponse(BaseModel):
 
 
 class RetentionPolicyUpdate(BaseModel):
-    retention_minutes: int = Field(gt=0, le=5_256_000)  # ~ up to 10 years
+    retention_minutes: int = Field(gt=0, le=5_256_000)
 
 
 class PurgeNowResponse(BaseModel):

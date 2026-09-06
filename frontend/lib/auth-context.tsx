@@ -25,7 +25,6 @@ export interface AuthUser {
   badge_number: string;
   mfa_enabled: boolean;
   signing_key_fingerprint: string | null;
-  /** True while a privileged account still has to finish enrolling MFA. */
   mfa_enrollment_required: boolean;
 }
 
@@ -41,11 +40,6 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const USER_KEY = "dms_user";
 const CHANGED_EVENT = "nyayvault:auth-changed";
 
-/**
- * The stored session is an external store, not React state: it is written by
- * the API layer on refresh, by other tabs, and by sign-in. Subscribing to it
- * keeps every tab consistent and avoids re-deriving it in an effect.
- */
 function subscribe(onChange: () => void) {
   window.addEventListener("storage", onChange);
   window.addEventListener(CHANGED_EVENT, onChange);
@@ -70,7 +64,6 @@ function announceChange() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
-  // null on the server and during hydration, then the real value.
   const storedUser = useSyncExternalStore(subscribe, readStoredUser, () => null);
   const hydrated = useSyncExternalStore(
     subscribe,
@@ -109,7 +102,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push("/login");
   }, [router]);
 
-  /** Re-read the profile after enrolling MFA or registering a signing key. */
   const refreshUser = useCallback(async () => {
     try {
       const me: CurrentUser = await fetchMe();
@@ -130,7 +122,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(USER_KEY, JSON.stringify(next));
       announceChange();
     } catch {
-      // A failure here means the session is gone; the API layer handles that.
     }
   }, []);
 
