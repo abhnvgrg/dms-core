@@ -111,3 +111,18 @@ async def require_fresh_mfa(
     await mfa.mark_code_used(current_user.id, x_mfa_code)
 
     return current_user
+
+
+def require_roles_with_fresh_mfa(*allowed_roles: Role):
+    async def role_guard(
+        current_user: User = Depends(require_fresh_mfa),
+    ) -> User:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to perform this action",
+            )
+
+        return current_user
+
+    return role_guard

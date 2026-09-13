@@ -74,7 +74,8 @@ export default function AssetsPage() {
   useEffect(() => {
     if (!online || queue.length === 0) return;
     void handleSync();
-  }, [online]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online, queue.length]);
 
   useEffect(() => {
     if (!user) return;

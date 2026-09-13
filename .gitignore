@@ -1,7 +1,6 @@
 # Project-specific
 docs/
 
-
 # Backend (Python/FastAPI)
 __pycache__/
 *.py[cod]
